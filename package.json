@@ -7,11 +7,20 @@
     "stepci": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "schema.json",
+    "npm-shrinkwrap.json",
+    "scripts/provenance.cjs",
+    "docs/maintainers"
   ],
+  "engines": {
+    "node": ">=24.21.0 <25",
+    "npm": ">=11.9.0 <12"
+  },
+  "packageManager": "npm@11.9.0",
   "dependencies": {
-    "@stepci/plugin-openapi": "^0.3.5",
-    "@stepci/runner": "^2.0.0",
+    "@stepci/plugin-openapi": "0.3.5",
+    "@stepci/runner": "2.0.0",
     "chalk": "^4.1.2",
     "ci-info": "^3.5.0",
     "cli-highlight": "^2.1.11",
@@ -33,11 +42,19 @@
     "vue": "^3.2.41"
   },
   "scripts": {
+    "prebuild": "node scripts/check-toolchain.cjs && node scripts/clean.cjs",
     "build": "tsc -p tsconfig.json",
-    "postbuild": "typescript-json-schema --required --esModuleInterop node_modules/@stepci/runner/dist/index.d.ts Workflow -o schema.json",
+    "postbuild": "typescript-json-schema --required --esModuleInterop node_modules/@stepci/runner/dist/index.d.ts Workflow -o schema.json && node scripts/provenance.cjs write",
     "build:watch": "tsc -w -p tsconfig.json",
     "init": "ts-node ./src/index.ts init",
-    "test": "ts-node ./src/index.ts run -v",
+    "pretest": "npm run build",
+    "test": "node scripts/provenance.cjs verify && node --test tests/cli.test.cjs",
+    "test:known": "node --test tests/known-failures.test.cjs",
+    "test:manual": "ts-node ./src/index.ts run -v",
+    "package": "npm run build && node scripts/package.cjs",
+    "prepack": "node -e \"throw new Error('Use npm run package to include the dependency lock')\"",
+    "test:package": "node scripts/test-package.cjs",
+    "verify": "npm test && npm run test:known && npm run test:package",
     "test:generate": "ts-node ./src/index.ts generate",
     "test:loadtest": "ts-node ./src/index.ts run --loadtest",
     "docs:dev": "vitepress dev docs",
@@ -46,7 +63,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/stepci/stepci.git"
+    "url": "git+https://github.com/rclevenger-hm/stepci.git"
   },
   "keywords": [
     "http",
