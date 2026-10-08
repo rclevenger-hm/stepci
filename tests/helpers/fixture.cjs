@@ -2,12 +2,14 @@ const http = require('node:http')
 const { once } = require('node:events')
 const TOKEN = 'stepci-fixture-token-not-a-real-credential'
 
-async function startFixture() {
+async function startFixture(host = '127.0.0.1') {
   const requests = []
   const server = http.createServer((request, response) => {
-    requests.push({ method: request.method, url: request.url, authorization: request.headers.authorization })
+    requests.push({ method: request.method, url: request.url, authorization: request.headers.authorization,
+      marker: request.headers['x-fixture-marker'] })
     if (request.url === '/slow') return // The CLI's request timeout must end this.
     if (request.url === '/disconnect') return request.socket.destroy()
+    if (request.url === '/bad-json') return response.end('{invalid json')
     response.setHeader('Content-Type', 'application/json')
     if (request.url === '/auth') {
       response.statusCode = request.headers.authorization === `Bearer ${TOKEN}` ? 200 : 401
@@ -22,12 +24,13 @@ async function startFixture() {
       response.statusCode = 404
       return response.end(JSON.stringify({ error: 'not found' }))
     }
-    response.end(JSON.stringify({ name: 'Widget', status: 'healthy', items: [] }))
+    response.end(JSON.stringify({ name: 'Widget', status: 'healthy', items: [],
+      nullable: null, count: 42, flag: false, object: { nested: true }, numbers: [1, 2] }))
   })
-  server.listen(0, '127.0.0.1')
+  server.listen(0, host)
   await once(server, 'listening')
   return {
-    url: `http://127.0.0.1:${server.address().port}`, requests,
+    url: `http://${host}:${server.address().port}`, requests, server,
     close: () => new Promise(resolve => {
       server.close(resolve)
       server.closeAllConnections()

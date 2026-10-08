@@ -8,13 +8,13 @@
 
 # Welcome
 
-## Self-hosted fork baseline
+## Self-hosted development
 
 This fork is establishing reliable post-deployment HTTP/JSON checks for platform
-teams. Start with the [local baseline guide](docs/maintainers/baseline.md) and
-[dependency/security review](docs/maintainers/security-baseline.md).
-The baseline is a development checkpoint: JSONPath isolation, secret redaction,
-containers and the reusable GitHub Action still have open release gates.
+teams. Work from `dev` and start with the
+[development and verification guide](docs/maintainers/dev.md) for the runner
+revision, fixed failure behavior, secret handling, migration notes and release
+gates. Feature PRs target `dev`; owner-approved squash PRs promote it to `main`.
 
 Use Node **24.21.0**, npm **11.9.0**, then `npm ci` and `npm run verify`.
 Tests run only against a local HTTP fixture and use fake credentials.
@@ -121,17 +121,18 @@ Get Pro-level support with SLA, onboarding, prioritized feature-requests and bug
 
 ## Privacy
 
-By default, the CLI collects anonymous usage data, which includes:
+This fork sends no usage telemetry and creates no persistent analytics identity.
+The inherited PostHog client and its dependencies have been removed.
+`STEPCI_DISABLE_ANALYTICS` is no longer needed and remains harmless if already set.
 
-- Unique user ID
-- OS Name
-- Node Version
-- CLI Version
-- Command (`stepci init`, `stepci run`, `stepci generate`)
-- Environment (Local, Docker, CI/CD)
+Use `STEPCI_SECRETS` (a JSON object supplied by your CI secret store) to pass secrets
+without putting their values in CLI arguments. Existing `--secret key=value`
+options still work and override environment secrets. Declared secrets and
+sensitive authentication fields are redacted from CLI diagnostics; keep raw
+workflow files and fixture/server logs private if they contain credentials.
 
-> **Note**
-> The usage analytics can be disabled by setting `STEPCI_DISABLE_ANALYTICS` environment variable
+See [the dev guide](docs/maintainers/dev.md) for the runner revision, matcher
+semantics, dependency updates and the dev-to-main review process.
 
 ## License
 

@@ -25,10 +25,16 @@ function snapshot(root, lock) {
     const manifest = read(manifestPath)
     const locked = lock.packages[`node_modules/${name}`]
     assert.equal(manifest.version, locked.version, `${name}: installed version differs from lock`)
-    assert.equal(read(path.join(root, 'package.json')).dependencies[name], locked.version,
+    const revision = name === '@stepci/runner' ? read(path.join(root, 'runner-revision.json')) : undefined
+    assert.equal(read(path.join(root, 'package.json')).dependencies[name], revision?.archive || locked.version,
       `${name}: direct dependency must be pinned exactly`)
+    if (revision) {
+      assert.equal(locked.resolved, revision.archive, 'Runner archive differs from intended revision')
+      assert.equal(manifest.version, revision.version)
+    }
     dependencies[name] = {
       version: manifest.version, resolved: locked.resolved, integrity: locked.integrity,
+      ...(revision ? { source: revision } : {}),
       entrypoint: path.relative(directory, requireCLI.resolve(name)).split(path.sep).join('/'),
       files: Object.fromEntries(files(directory)
         .map(file => [file, sha256(path.join(directory, file))]))
@@ -53,7 +59,7 @@ function snapshot(root, lock) {
   }
   return {
     dependencies, production,
-    artifacts: Object.fromEntries(['package.json', 'schema.json', ...files(root, 'dist')]
+    artifacts: Object.fromEntries(['package.json', 'runner-revision.json', 'scripts/action-entrypoint.cjs', 'schema.json', ...files(root, 'dist')]
       .filter(file => file !== 'dist/build-manifest.json')
       .map(file => [file, sha256(path.join(root, file))]))
   }
@@ -68,9 +74,14 @@ function main() {
   const output = path.join(root, 'dist/build-manifest.json')
   if (command === 'write') {
     const sourceFiles = [...files(root, 'src'), ...files(root, 'scripts'), 'tsconfig.json', '.nvmrc']
+    // GitHub builds Docker Actions from an archive without Git metadata or
+    // custom build args. In that case retain complete source file hashes.
+    const sourceCommit = process.env.STEPCI_SOURCE_REVISION === 'source-hashes' ? null
+      : process.env.STEPCI_SOURCE_REVISION || execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+    if (sourceCommit !== null) assert.match(sourceCommit, /^[a-f0-9]{40}$/, 'A complete source revision is required')
     const manifest = {
       format: 1,
-      sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+      sourceCommit,
       sourceFiles: Object.fromEntries(sourceFiles.map(file => [file, sha256(path.join(root, file))])),
       node: process.versions.node,
       npm: process.env.npm_config_user_agent?.split(' ')[0],

@@ -1,5 +1,8 @@
 # Deterministic CLI baseline
 
+> Historical baseline from 2026-10-07. See [current dev status](dev.md) for the fixes,
+> replacement regression tests and refreshed dependency graph.
+
 ## Product boundary
 
 Deploy a service, run version-controlled YAML HTTP/JSON checks, and use the exit

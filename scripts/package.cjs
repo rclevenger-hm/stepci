@@ -11,7 +11,7 @@ fs.mkdirSync(output, { recursive: true })
 try {
   execFileSync(process.execPath, [path.join(__dirname, 'provenance.cjs'), 'verify'], { stdio: 'inherit' })
   for (const file of ['dist', 'schema.json', 'package.json', 'README.md', 'LICENSE',
-    'scripts/provenance.cjs', 'docs/maintainers']) {
+    'runner-revision.json', 'scripts/provenance.cjs', 'scripts/action-entrypoint.cjs', 'docs/maintainers']) {
     fs.cpSync(path.join(root, file), path.join(stage, file), { recursive: true })
   }
   fs.copyFileSync(path.join(root, 'package-lock.json'), path.join(stage, 'npm-shrinkwrap.json'))

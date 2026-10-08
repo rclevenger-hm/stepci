@@ -32,7 +32,7 @@ try {
   const verify = () => execFileSync(process.execPath, [path.join(__dirname, 'provenance.cjs'),
     'verify', installed], { stdio: 'pipe', encoding: 'utf8' })
   console.log(verify())
-  execFileSync(process.execPath, ['--test', 'tests/cli.test.cjs', 'tests/known-failures.test.cjs'], {
+  execFileSync(process.execPath, ['--test', 'tests/cli.test.cjs', 'tests/regressions.test.cjs', 'tests/compatibility.test.cjs', 'tests/action.test.cjs'], {
     cwd: root, stdio: 'inherit', env: { ...process.env, STEPCI_TEST_CLI: path.join(installed, 'dist/index.js') }
   })
   // Prove the checker rejects changed executable bytes and generated schemas.
@@ -47,8 +47,9 @@ try {
     node: process.version, npm: process.env.npm_config_user_agent?.split(' ')[0],
     tarball: info.filename, sha256: firstHash, identicalBuilds: 2,
     install: 'isolated extracted tarball + offline npm ci --omit=dev',
-    fixtureTests: 12, knownFailureCharacterizations: 3, tamperChecks: 2,
-    container: 'not verified in phase one', action: 'not verified in phase one'
+    fixtureTests: 12, regressionTests: 13, compatibilityTests: 4, actionTests: 6, tamperChecks: 2,
+    container: 'verified separately by the containers CI job',
+    action: 'launcher regressions included; Docker Action verified separately in CI'
   }, null, 2) + '\n')
   console.log(`Two identical npm tarballs: sha256:${firstHash}`)
 } finally {

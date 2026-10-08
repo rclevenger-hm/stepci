@@ -1,38 +1,141 @@
-name: Deterministic CLI baseline
-on: [push, pull_request, workflow_dispatch]
+name: Verify StepCI
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 concurrency:
   group: baseline-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  branch-policy:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require main promotions to come from dev
+        env:
+          PR_HEAD: ${{ github.head_ref }}
+        run: |
+          if test "$PR_HEAD" != dev; then
+            echo 'Feature and fix PRs must target dev. Promote dev to main with an approved squash PR.'
+            exit 1
+          fi
   baseline:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
       - name: Select pinned npm
         run: npm install --global npm@11.9.0
       - name: Clean locked install
         run: npm ci --no-audit --no-fund
       - name: Built CLI fixture tests
         run: npm test
-      - name: Record known runner and redaction defects
-        run: npm run test:known
       - name: Verify two builds and isolated package installation
         run: npm run test:package
+      - name: Audit application dependencies
+        run: npm audit --audit-level=moderate --json > artifacts/npm-audit.json
       - name: Reject generated schema or lock drift
         run: git diff --exit-code -- schema.json package-lock.json
       - name: Preserve package verification evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-baseline-evidence
           path: |
             artifacts/package-info.json
             artifacts/verification.json
+            artifacts/runner-rebuild.json
+            artifacts/npm-audit.json
             dist/build-manifest.json
           if-no-files-found: warn
+  containers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm install --global npm@11.9.0
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Build pinned application image
+        run: docker build --no-cache --build-arg SOURCE_REVISION="$GITHUB_SHA" -t stepci:dev-test .
+      - name: Verify image dependency provenance and absence of build caches
+        run: |
+          docker run --rm --entrypoint node stepci:dev-test scripts/provenance.cjs verify .
+          docker run --rm --entrypoint sh stepci:dev-test -c 'test ! -d /root/.npm && test ! -d /app/node_modules/.cache'
+      - name: Run fixture regressions through container CLI
+        env:
+          STEPCI_TEST_MODE: container
+        run: node --test tests/cli.test.cjs tests/regressions.test.cjs
+      - name: Run fixture regressions through container Action entrypoint
+        env:
+          STEPCI_TEST_MODE: container-action
+        run: node --test tests/cli.test.cjs tests/regressions.test.cjs
+      - name: Rebuild identical inputs and compare artifacts
+        run: |
+          docker build --no-cache --build-arg SOURCE_REVISION="$GITHUB_SHA" -t stepci:dev-repeat .
+          node scripts/compare-images.cjs
+      - name: Preserve image comparison
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: container-evidence
+          path: artifacts/image-comparison.json
+          if-no-files-found: warn
+  action:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Start local fixture on the Docker bridge
+        id: fixture
+        run: |
+          mkdir -p artifacts/action-fixture
+          export FIXTURE_HOST="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')"
+          node tests/action-fixture.cjs > artifacts/action-fixture/server.log 2>&1 &
+          echo "pid=$!" >> "$GITHUB_OUTPUT"
+          for attempt in $(seq 1 50); do
+            if test -f artifacts/action-fixture/ready; then break; fi
+            sleep 0.2
+          done
+          test -f artifacts/action-fixture/ready
+          node -e 'console.log("::add-mask::" + require("./tests/helpers/fixture.cjs").TOKEN)'
+      - name: Check a healthy deployment through the reusable Action
+        uses: ./
+        with:
+          workflow: artifacts/action-fixture/healthy.yml
+          envs: '{"marker":"two words; $(touch injected)"}'
+          secrets: '{"token":"stepci-fixture-token-not-a-real-credential"}'
+          verbose: 'true'
+          concurrency: '2'
+      - name: Check a deliberately broken deployment through the reusable Action
+        id: broken
+        continue-on-error: true
+        uses: ./
+        with:
+          workflow: artifacts/action-fixture/broken.yml
+      - name: Require the expected failure and literal input handling
+        env:
+          BROKEN_OUTCOME: ${{ steps.broken.outcome }}
+        run: node tests/action-fixture.cjs verify
+      - name: Stop local fixture
+        if: always()
+        env:
+          FIXTURE_PID: ${{ steps.fixture.outputs.pid }}
+        run: if test -n "$FIXTURE_PID"; then kill "$FIXTURE_PID"; fi

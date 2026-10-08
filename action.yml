@@ -10,10 +10,10 @@ inputs:
     required: true
     default: '.stepci/workflows/workflow.yml'
   envs:
-    description: 'env option. e.g. "env1 env2 ..."'
+    description: 'Environment values as a JSON object/array, or quoted key=value entries'
     required: false
   secrets:
-    description: 'secret option. e.g. "secret1 secret2 ..."'
+    description: 'Secrets as a JSON object/array, or quoted key=value entries'
     required: false
   verbose:
     description: 'verbose option. e.g "true"'
@@ -33,5 +33,6 @@ runs:
     SECRETS: ${{ inputs.secrets }}
     VERBOSE: ${{ inputs.verbose }}
     LOADTEST: ${{ inputs.loadtest }}
+    CONCURRENCY: ${{ inputs.concurrency }}
   args:
     - ${{ inputs.workflow }}

@@ -39,7 +39,7 @@ steps:
 
 **Comparison operators**
 
-- `eq` - Equal (===)
+- `eq` - Deep equality
 - `ne` - Not equal (!==)
 - `gt` - Greater than (>)
 - `gte` - Greater than or equal (>=)
@@ -58,3 +58,12 @@ steps:
 - `isDefined` - Is Defined
 - `isObject` - Is Object
 - `isArray` - Is Array
+
+### Missing values and negative checks
+
+Missing/null values fail `in` and `match`, and pass `nin`. An empty array fails
+`in` and passes `nin`. Unsupported membership value types follow the same rules.
+`nin` does not require a field to exist: combine it with `isDefined: true` and an
+appropriate type check when those are requirements. Invalid expressions fail
+their own check while preserving unrelated results. See the
+[tested matcher contract](../maintainers/dev.md#correct-failure-behavior).

@@ -3,24 +3,35 @@ on:
   release:
     types: [published]
 jobs:
+  verify:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/testaction.yml
   publish:
+    needs: verify
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Setup QEMU
-      uses: docker/setup-qemu-action@v3
+      uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
     - name: Setup Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
     - name: Setup env
       run: |
         echo CONTAINER_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF#refs/*/} >> $GITHUB_ENV
         echo CONTAINER_IMAGE_LATEST=ghcr.io/${GITHUB_REPOSITORY,,}:latest >> $GITHUB_ENV
     - name: Login
-      run: docker login -u $GITHUB_ACTOR -p ${{secrets.GITHUB_TOKEN}} ghcr.io
+      env:
+        REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: printf '%s' "$REGISTRY_TOKEN" | docker login -u "$GITHUB_ACTOR" --password-stdin ghcr.io
     - name: Build and push
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
       with:
         context: .
+        build-args: SOURCE_REVISION=${{ github.sha }}
         platforms: linux/amd64,linux/arm64
         push: true
         tags: ${{ env.CONTAINER_IMAGE }},${{ env.CONTAINER_IMAGE_LATEST }}
