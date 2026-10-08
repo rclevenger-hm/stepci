@@ -200,8 +200,25 @@ do not skip it, invert all expectations indiscriminately, or present it as accep
 
 The old push workflow ran the Docker Action against `examples/status.yml` and a
 public endpoint. It is replaced by this baseline workflow. That is not proof that
-the reusable Action works. The existing docs/publish workflows remain separate;
-no merge, deployment, release or package publication is performed by this PR.
+the reusable Action works.
+
+### Documentation CI
+
+The separate `Build documentation` workflow checks pull requests and pushes to
+`main`, using the same pinned Node/npm versions and `npm ci`. It builds VitePress,
+rejects lock/schema drift and retains the static site as the `documentation-site`
+workflow artifact for seven days. Reproduce locally with `npm run docs:build`
+after the locked installation above; preview with `npm run docs:serve`.
+
+The inherited Pages workflow failed during action setup because
+`upload-pages-artifact@v1` depends on the retired `upload-artifact@v3`. It has been
+replaced with a build-only check and a pinned artifact action. No GitHub Pages
+configuration, deployment environment or hosting credentials are needed. The
+workflow has read-only repository permissions and does not publish a site.
+Enabling hosting is a separate, approved change that must also review the site's
+base path, upstream navigation/assets and search configuration. The existing
+Docker publication workflow is release-triggered and still subject to the
+delivery/release gates below.
 
 ### Telemetry and secret handling today
 
