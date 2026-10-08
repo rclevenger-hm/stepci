@@ -58,6 +58,7 @@
     "test:generate": "ts-node ./src/index.ts generate",
     "test:loadtest": "ts-node ./src/index.ts run --loadtest",
     "docs:dev": "vitepress dev docs",
+    "predocs:build": "node scripts/check-toolchain.cjs",
     "docs:build": "vitepress build docs",
     "docs:serve": "vitepress serve docs"
   },
