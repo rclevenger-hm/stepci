@@ -8,6 +8,24 @@
 
 # Welcome
 
+## Self-hosted fork baseline
+
+This fork is establishing reliable post-deployment HTTP/JSON checks for platform
+teams. Start with the [local baseline guide](docs/maintainers/baseline.md) and
+[dependency/security review](docs/maintainers/security-baseline.md).
+The baseline is a development checkpoint: JSONPath isolation, secret redaction,
+containers and the reusable GitHub Action still have open release gates.
+
+Use Node **24.21.0**, npm **11.9.0**, then `npm ci` and `npm run verify`.
+Tests run only against a local HTTP fixture and use fake credentials.
+`npm run package` creates a locked local tarball; it does not publish it.
+The package manifest records the source commit and file hashes. Corresponding
+source is available in [this repository](https://github.com/rclevenger-hm/stepci);
+retain its MPL-2.0 license and notices when distributing modifications.
+
+The installation commands and public-service examples below describe upstream
+StepCI. They do not install this fork or constitute its acceptance suite.
+
 Step CI is an open-source API Quality Assurance framework
 
 - **Language-agnostic**. Configure easily using YAML, JSON or JavaScript

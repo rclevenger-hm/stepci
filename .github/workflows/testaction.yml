@@ -1,11 +1,38 @@
-on: [push]
+name: Deterministic CLI baseline
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: baseline-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  api_test:
-    runs-on: ubuntu-latest
-    name: API Tests
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
-      - name: Step CI Action
-        uses: ./
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          workflow: "examples/status.yml"
+          node-version-file: .nvmrc
+      - name: Select pinned npm
+        run: npm install --global npm@11.9.0
+      - name: Clean locked install
+        run: npm ci --no-audit --no-fund
+      - name: Built CLI fixture tests
+        run: npm test
+      - name: Record known runner and redaction defects
+        run: npm run test:known
+      - name: Verify two builds and isolated package installation
+        run: npm run test:package
+      - name: Reject generated schema or lock drift
+        run: git diff --exit-code -- schema.json package-lock.json
+      - name: Preserve package verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cli-baseline-evidence
+          path: |
+            artifacts/package-info.json
+            artifacts/verification.json
+            dist/build-manifest.json
+          if-no-files-found: warn

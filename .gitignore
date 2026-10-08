@@ -105,3 +105,4 @@ dist
 
 # VitePress
 cache/
+artifacts/
