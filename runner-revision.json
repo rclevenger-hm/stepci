@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/stepci/runner",
+  "commit": "e8a93ef894c079b19ccd87ed7cdcfcf87f79e7cf",
+  "archive": "https://codeload.github.com/stepci/runner/tar.gz/e8a93ef894c079b19ccd87ed7cdcfcf87f79e7cf",
+  "version": "2.0.7",
+  "contributor": "Matthew J. Martin (matmar10)",
+  "pullRequest": "https://github.com/stepci/runner/pull/132",
+  "sourceChange": "ca89c2088e0710362364817af41dc4a1facdb6f3",
+  "maintenance": "Immutable development dependency; no vendored runner tree. Replace with a verified upstream release or companion fork before long-term distribution."
+}

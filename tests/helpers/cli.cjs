@@ -5,26 +5,51 @@ const path = require('node:path')
 const { spawn } = require('node:child_process')
 const cli = path.resolve(process.env.STEPCI_TEST_CLI || path.join(__dirname, '../../dist/index.js'))
 
-async function runCLI(workflow, extra = []) {
+async function runCLI(workflow, extra = [], options = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'stepci-fixture-'))
   const workflowPath = path.join(directory, 'workflow with spaces.yml')
   const networkLog = path.join(directory, 'network.log')
+  const mode = options.mode || process.env.STEPCI_TEST_MODE || 'cli'
   try {
     if (workflow !== null) await fs.writeFile(workflowPath, workflow)
     // No inherited credentials, proxy configuration, NODE_OPTIONS or NODE_PATH.
     const env = {
       PATH: path.dirname(process.execPath), HOME: directory, USERPROFILE: directory,
       XDG_CONFIG_HOME: directory, APPDATA: directory, LOCALAPPDATA: directory,
-      STEPCI_DISABLE_ANALYTICS: '1', STEPCI_TEST_NETWORK_LOG: networkLog,
+      STEPCI_TEST_NETWORK_LOG: networkLog,
       NO_COLOR: '1', NO_PROXY: '*', CI: 'true', TZ: 'UTC',
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {})
+      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+      ...(options.env || {})
+    }
+    if (mode === 'action') env.NODE_OPTIONS = `--require=${path.join(__dirname, 'loopback-only.cjs')}`
+    if (options.recordArgs) {
+      env.NODE_OPTIONS += ` --require=${path.join(__dirname, 'record-pid.cjs')}`
+      env.STEPCI_TEST_RECORD_ARGS = path.join(directory, 'arguments.json')
     }
     const result = await new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, ['--require', path.join(__dirname, 'loopback-only.cjs'),
-        cli, 'run', workflowPath, ...extra], { cwd: directory, env, stdio: ['ignore', 'pipe', 'pipe'] })
+      let executable = process.execPath
+      let args = ['--require', path.join(__dirname, 'loopback-only.cjs'),
+        mode === 'action' ? path.resolve(cli, '../../scripts/action-entrypoint.cjs') : cli,
+        ...(mode === 'action' ? [] : [options.command || 'run']), workflowPath, ...extra]
+      if (mode === 'container' || mode === 'container-action') {
+        executable = 'docker'
+        const containerEnv = { ...env, HOME: '/case', USERPROFILE: '/case', XDG_CONFIG_HOME: '/case',
+          APPDATA: '/case', LOCALAPPDATA: '/case', STEPCI_TEST_NETWORK_LOG: '/case/network.log',
+          NODE_OPTIONS: '--require=/fixtures/loopback-only.cjs' }
+        delete containerEnv.PATH
+        args = ['run', '--rm', '--network', 'host',
+          '--volume', `${directory}:/case`, '--volume', `${__dirname}:/fixtures:ro`,
+          '--workdir', '/case', ...Object.entries(containerEnv).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
+          ...(mode === 'container' ? ['--entrypoint', 'node'] : []),
+          process.env.STEPCI_TEST_IMAGE || 'stepci:dev-test',
+          ...(mode === 'container' ? ['/app/dist/index.js', options.command || 'run'] : []),
+          '/case/workflow with spaces.yml', ...extra]
+        env.PATH = process.env.PATH
+      }
+      const child = spawn(executable, args, { cwd: directory, env, stdio: ['ignore', 'pipe', 'pipe'] })
       let output = ''
       let timedOut = false
-      const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, 10000)
+      const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, mode.startsWith('container') ? 20000 : 10000)
       child.stdout.on('data', data => { output += data })
       child.stderr.on('data', data => { output += data })
       child.on('error', error => { clearTimeout(timer); reject(error) })
@@ -40,6 +65,9 @@ async function runCLI(workflow, extra = []) {
       return ''
     })
     assert.equal(attempts, '', 'CLI attempted network access outside the fixture')
+    result.files = await fs.readdir(directory, { recursive: true })
+    if (options.readFile) result.file = await fs.readFile(path.join(directory, options.readFile), 'utf8')
+    if (options.recordArgs) result.arguments = JSON.parse(await fs.readFile(path.join(directory, 'arguments.json'), 'utf8'))
     return result
   } finally {
     await fs.rm(directory, { recursive: true, force: true })

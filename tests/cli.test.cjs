@@ -58,10 +58,11 @@ test('malformed YAML exits 1', async () => {
   assert.doesNotMatch(result.output, /Workflow passed/)
 })
 
-test('workflow missing tests exits 1 (existing diagnostic limitation)', async () => {
+test('workflow missing tests exits 1 with a useful validation error', async () => {
   const result = await runCLI('version: "1.1"\nname: Invalid\n')
   expectCode(result, 1)
-  assert.match(result.output, /TypeError/)
+  assert.match(result.output, /Invalid workflow: tests must be a non-empty mapping/)
+  assert.doesNotMatch(result.output, /TypeError|node_modules/)
 })
 
 test('missing workflow file exits 1', async () => {

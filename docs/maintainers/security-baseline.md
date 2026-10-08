@@ -1,5 +1,8 @@
 # Dependency exposure baseline
 
+> Historical baseline from 2026-10-07. See [current dev status](dev.md) for the fixes,
+> replacement regression tests and refreshed dependency graph.
+
 Reviewed 2026-10-07 against the original locked dependency versions. The baseline
 PR changes pin/lock metadata but does not update any dependency version.
 `npm audit --json` returned **33 affected package entries**: 6 critical, 19 high,

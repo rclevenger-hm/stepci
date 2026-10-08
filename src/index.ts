@@ -10,15 +10,44 @@ import chalk from 'chalk'
 import { EventEmitter } from 'node:events'
 import { defaultText } from './lib/constants'
 import { checkOptionalEnvArrayFormat, parseEnvArray } from './lib/utils'
-import { renderStep, renderSummary, renderStepSummary, renderFeedbackMessage, renderLoadTest, renderAnalyticsMessage } from './lib/render'
-import { sendAnalyticsEvent } from './lib/analytics'
+import { renderStep, renderSummary, renderStepSummary, renderFeedbackMessage, renderLoadTest } from './lib/render'
+import { Redactor, redactConsole } from './lib/redact'
+import { inspectWorkflow } from './lib/workflow'
 
 let verbose: boolean | undefined = false
 
-renderAnalyticsMessage()
+const redactor = new Redactor()
+redactor.arguments(hideBin(process.argv))
+redactConsole(redactor)
+
+function reportError(error: unknown) {
+  if (error instanceof Error && error.name === 'YAMLException') {
+    const mark = (error as any).mark
+    const location = Number.isInteger(mark?.line) && Number.isInteger(mark?.column)
+      ? ` at line ${mark.line + 1}, column ${mark.column + 1}` : ''
+    // Parser excerpts may contain inline credentials that could not be parsed.
+    console.error(`YAMLException: Invalid YAML${location}`)
+  } else console.error(error instanceof Error ? `${error.name}: ${error.message}` : String(error))
+  exit(1)
+}
+
+process.on('unhandledRejection', reportError)
+
+let environmentSecrets: Record<string, string> = {}
+if (process.env.STEPCI_SECRETS) {
+  try {
+    const value = JSON.parse(process.env.STEPCI_SECRETS)
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Object.values(value).some(secret => typeof secret !== 'string')) throw new Error()
+    environmentSecrets = value
+    Object.values(value).forEach(secret => redactor.add(secret))
+  } catch { reportError(new Error('Invalid STEPCI_SECRETS: expected a JSON object with string values')) }
+}
 
 const ee = new EventEmitter()
+ee.on('step:http_request', request => redactor.collect(request.getHeaders?.() || {}))
 ee.on('test:result', (test: TestResult) => {
+  test = redactor.value(test)
   console.log(`${(test.passed ? chalk.bgGreenBright(' PASS ') : chalk.bgRedBright(' FAIL '))} ${chalk.bold(test.name || test.id)} ⏲ ${test.duration / 1000 + 's'} ${chalk.magenta('⬆')} ${test.bytesSent} bytes ${chalk.cyan('⬇')} ${test.bytesReceived} bytes`)
   if (!test.passed || verbose) {
     renderStepSummary(test.steps)
@@ -27,12 +56,14 @@ ee.on('test:result', (test: TestResult) => {
 })
 
 ee.on('workflow:result', ({ result }: WorkflowResult) => {
-  renderSummary(result)
+  renderSummary(redactor.value(result))
   renderFeedbackMessage()
   if (!result.passed) exit(5)
 })
 
 yargs(hideBin(process.argv))
+  .exitProcess(false)
+  .fail((message, error) => { throw error || new Error(message) })
   .command('run [workflow]', 'run workflow', (yargs) => {
     return yargs
       .positional('workflow', {
@@ -87,23 +118,26 @@ yargs(hideBin(process.argv))
       })
   }, async (argv) => {
     verbose = argv.verbose
+    const secrets = { ...environmentSecrets, ...parseEnvArray(argv.s) }
+    Object.values(secrets).forEach(secret => redactor.add(secret))
+    redactor.collect(await inspectWorkflow(argv.workflow))
 
     if (argv.loadtest) {
       console.log(chalk.yellowBright(`⚠︎ Running a load test. This may take a while`))
       const { result } = await loadTestFromFile(argv.workflow, {
         env: parseEnvArray(argv.e),
-        secrets: parseEnvArray(argv.s)
+        secrets
       })
 
-      renderLoadTest(result)
+      renderLoadTest(redactor.value(result))
       renderFeedbackMessage()
       if (!result.passed) exit(5)
       return
     }
 
-    runFromFile(argv.workflow, {
+    await runFromFile(argv.workflow, {
       env: parseEnvArray(argv.e),
-      secrets: parseEnvArray(argv.s),
+      secrets,
       ee,
       concurrency: argv.concurrency
     })
@@ -177,6 +211,5 @@ tests:
     console.log(`${chalk.greenBright('Success!')} The workflow file can be found at ${argv.path}\nEnter ${chalk.grey('npx stepci run ' + argv.path)} to run it`)
   })
   .command(['$0'], false, () => {}, () => console.log(defaultText))
-  .parse()
-
-sendAnalyticsEvent()
+  .parseAsync()
+  .catch(reportError)
