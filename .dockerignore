@@ -1,0 +1,7 @@
+.git
+node_modules
+dist
+artifacts
+docs/.vitepress/dist
+docs/.vitepress/cache
+*.log
